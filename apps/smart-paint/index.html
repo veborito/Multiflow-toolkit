@@ -1,0 +1,342 @@
+<!-- apps/smart-paint/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiflow Smart Paint - Speech, Camera, Color Test</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --color-light-bg: #f8f8f8; /* Very light gray background */
+            --color-white: #ffffff;
+            --color-text-dark: #333333;
+            --color-text-medium: #666666;
+            --color-border: #e0e0e0;
+            --color-accent-green: #c8e6c9; /* Soft, muted green */
+            --color-accent-red: #f8d1c9; /* Soft, muted red/terracotta */
+            --color-disabled: #f0f0f0;
+            --color-disabled-text: #aaaaaa;
+            --color-warning: #f7a01a; /* Orange for warnings */
+
+            /* Colors for visualization, matching our detection logic */
+            --detected-red: #e74c3c;
+            --detected-yellow: #f1c40f;
+            --detected-green: #2ecc71;
+            --detected-blue: #3498db;
+            --detected-black: #2c3e50;
+            --detected-white: #ecf0f1;
+            --detected-none: var(--color-text-medium); /* Fallback/unknown color */
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            margin: 0;
+            padding: 40px;
+            /* Default background and transition for smooth changes */
+            background-color: var(--color-light-bg); 
+            transition: background-color 0.5s ease; /* Smooth transition for background changes */
+            color: var(--color-text-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            box-sizing: border-box;
+            line-height: 1.6;
+        }
+
+        /* --- NEW CSS for dynamic body background colors --- */
+        body.bg-red { background-color: var(--detected-red); }
+        body.bg-yellow { background-color: var(--detected-yellow); }
+        body.bg-green { background-color: var(--detected-green); }
+        body.bg-blue { background-color: var(--detected-blue); }
+        body.bg-black { background-color: var(--detected-black); }
+        body.bg-white { background-color: var(--detected-white); } /* If you want to allow white background */
+        body.bg-none { background-color: var(--color-light-bg); } /* To reset to default light background */
+        /* --- END NEW CSS --- */
+
+
+        .container {
+            background-color: var(--color-white);
+            padding: 40px 50px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+            text-align: center;
+            max-width: 800px; /* Slightly wider to accommodate video */
+            width: 100%;
+            border: 1px solid var(--color-border);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        h1 {
+            color: var(--color-text-dark);
+            margin-bottom: 25px;
+            font-size: 2.4em;
+            font-weight: 600;
+        }
+
+        p {
+            font-size: 1.1em;
+            margin-bottom: 15px;
+            color: var(--color-text-medium);
+        }
+
+        strong {
+            font-weight: 500;
+            color: var(--color-text-dark);
+        }
+        
+        strong.warning-text {
+            color: var(--color-warning);
+        }
+
+        .video-feed {
+            margin: 20px 0;
+            border: 2px solid var(--color-border);
+            border-radius: 8px;
+            overflow: hidden; /* Ensures video stays within border radius */
+            position: relative; /* For absolute positioning of color-display-circle */
+            background-color: #eee; /* Placeholder background before video loads */
+            width: 100%;
+            max-width: 640px; /* Standard webcam width, or adjust as needed */
+            aspect-ratio: 16 / 9; /* Maintain aspect ratio */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .video-feed video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover; /* Cover the area, potentially cropping */
+            display: block; /* Remove extra space below video */
+            transform: scaleX(-1); /* Mirror the video for natural interaction */
+            background-color: #333; /* Dark background if video not loaded yet */
+        }
+        
+        .color-display-circle {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 3px solid var(--color-white); /* White ring for visibility */
+            position: absolute;
+            top: 50%; /* Center of the video */
+            left: 50%; /* Center of the video */
+            transform: translate(-50%, -50%); /* Adjust to truly center */
+            z-index: 10; /* Above video */
+            box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.1); /* Subtle shadow around the circle */
+            transition: background-color 0.2s ease; /* Smooth color change */
+        }
+
+
+        .button-group {
+            margin: 30px 0;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            width: 100%;
+        }
+
+        button {
+            padding: 12px 30px;
+            font-size: 1.1em;
+            font-weight: 500;
+            border: 1px solid var(--color-border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
+            color: var(--color-text-dark);
+            background-color: var(--color-white);
+            min-width: 150px;
+        }
+
+        button#startButton {
+            border-color: var(--color-accent-green);
+        }
+
+        button#startButton:hover:not(:disabled) {
+            background-color: var(--color-accent-green);
+            color: var(--color-white);
+            border-color: var(--color-accent-green);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        button#stopButton {
+            border-color: var(--color-accent-red);
+        }
+
+        button#stopButton:hover:not(:disabled) {
+            background-color: var(--color-accent-red);
+            color: var(--color-white);
+            border-color: var(--color-accent-red);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
+        }
+
+        button:disabled {
+            background-color: var(--color-disabled);
+            border-color: var(--color-border);
+            color: var(--color-disabled-text);
+            cursor: not-allowed;
+            box-shadow: none;
+            transform: none;
+        }
+
+        #output, #status, #colorStatus {
+            margin-top: 15px;
+            font-size: 1.2em;
+            font-weight: 500;
+            min-height: 25px;
+            width: 100%;
+        }
+        #output {
+            color: var(--color-text-dark);
+        }
+        #status {
+            color: var(--color-text-medium);
+        }
+        #colorStatus {
+            color: var(--color-text-dark);
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Multiflow Smart Paint - Test</h1>
+        <p>Click <strong>"Start Engine"</strong> to activate speech and camera. Say commands like <strong>"paint"</strong>, <strong>"background"</strong>, <strong>"one"</strong>, <strong>"two"</strong>, <strong>"three"</strong>, or <strong>"stop"</strong>. Hold a colored object in the center of the camera to test color detection.</p>
+        
+        <div class="video-feed">
+            <video id="webcamVideo" autoplay playsinline></video>
+            <div id="colorDisplayCircle" class="color-display-circle"></div>
+        </div>
+
+        <div class="button-group">
+            <button id="startButton">Start Engine</button>
+            <button id="stopButton" disabled>Stop Engine</button>
+        </div>
+        
+        <p id="output">Last command/event: <strong>None</strong></p> <!-- Changed text for better representation of all events -->
+        <p id="status">Current App Mode: <strong>Idle</strong> | Line Width: <strong>1</strong></p>
+        <p id="colorStatus">Detected Color: <strong>None</strong></p>
+    </div>
+
+    <script type="module">
+        // Ensure the path is correct from index.html to fusion-engine/index.js
+        import { MultiflowFusionEngine } from '../../packages/multiflow-toolkit/fusion-engine/index.js'; 
+
+        const fusionEngine = new MultiflowFusionEngine();
+        const webcamVideo = document.getElementById('webcamVideo');
+        const colorDisplayCircle = document.getElementById('colorDisplayCircle');
+        const outputElement = document.getElementById('output');
+        const statusElement = document.getElementById('status');
+        const colorStatusElement = document.getElementById('colorStatus');
+        const startButton = document.getElementById('startButton');
+        const stopButton = document.getElementById('stopButton');
+
+        let isEngineRunning = false;
+        let appCurrentMode = 'idle';
+        let appCurrentLineWidth = 1;
+        let appDetectedColor = 'none';
+
+        // Helper to update the color circle's background from CSS variables
+        const updateColorCircle = (colorName) => {
+            const colorVar = `--detected-${colorName.toLowerCase()}`;
+            colorDisplayCircle.style.backgroundColor = getComputedStyle(document.documentElement).getPropertyValue(colorVar) || colorName;
+        };
+
+        // Helper to remove all 'bg-' classes from the body
+        const removeBgClasses = () => {
+            document.body.classList.forEach(className => {
+                if (className.startsWith('bg-')) {
+                    document.body.classList.remove(className);
+                }
+            });
+        };
+
+        const handleEngineEvent = (event) => {
+            console.log("App received event from Engine:", event); // Always useful for debugging!
+            
+            // Handle different event types emitted by the Fusion Engine
+            if (event.type === 'modeChange') {
+                appCurrentMode = event.data; 
+                outputElement.innerHTML = `Last command/event: <strong>Mode changed to ${appCurrentMode}</strong>`;
+            } else if (event.type === 'lineWidthChange') {
+                appCurrentLineWidth = event.data;
+                outputElement.innerHTML = `Last command/event: <strong>Line width set to ${appCurrentLineWidth}</strong>`;
+            } else if (event.type === 'colorDetected') {
+                appDetectedColor = event.data;
+                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
+                updateColorCircle(appDetectedColor); // Update the visual circle
+            } else if (event.type === 'setBackgroundColor') {
+                const colorToSet = event.data;
+                removeBgClasses(); // Remove existing background classes first
+                if (colorToSet && colorToSet !== 'none') {
+                    document.body.classList.add(`bg-${colorToSet}`); // Add new color class
+                    outputElement.innerHTML = `Last command/event: <strong>Background set to ${colorToSet}</strong>`;
+                } else {
+                    document.body.classList.add('bg-none'); // Or just remove all classes
+                    outputElement.innerHTML = `Last command/event: <strong>Background reset to default</strong>`;
+                }
+            } else if (event.type === 'startPainting') {
+                // This event is emitted when 'paint' command is recognized, possibly with a color
+                const paintColor = event.data.color || 'default';
+                outputElement.innerHTML = `Last command/event: <strong>Starting painting mode (color: ${paintColor})</strong>`;
+                // TODO: Here you would integrate with your canvas drawing logic
+            } else if (event.type === 'warning') {
+                outputElement.innerHTML = `Last command/event: <strong class="warning-text">${event.data}</strong>`;
+            } else if (event.type === 'error') {
+                outputElement.innerHTML = `Last command/event: <strong class="warning-text">ERROR: ${event.data}</strong>`;
+            }
+           
+            // Always update the general status display
+            statusElement.innerHTML = `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`; 
+        };
+
+        startButton.addEventListener('click', async () => {
+            if (!isEngineRunning) {
+                // Pass the video element to the engine so it can manage the camera
+                await fusionEngine.start(handleEngineEvent, webcamVideo); 
+                isEngineRunning = true;
+                startButton.textContent = 'Engine Running...';
+                startButton.disabled = true;
+                stopButton.disabled = false;
+                // Initialize status displays after engine starts
+                outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
+                statusElement.innerHTML = `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
+                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
+                updateColorCircle(appDetectedColor); // Initialize circle color
+            }
+        });
+
+        stopButton.addEventListener('click', () => {
+            if (isEngineRunning) {
+                fusionEngine.stop();
+                isEngineRunning = false;
+                startButton.textContent = 'Start Engine';
+                startButton.disabled = false;
+                stopButton.disabled = true;
+                outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
+                appCurrentMode = 'idle'; 
+                appCurrentLineWidth = 1; 
+                appDetectedColor = 'none';
+                removeBgClasses(); // Reset body background on stop
+                statusElement.innerHTML = `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
+                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
+                updateColorCircle(appDetectedColor); // Reset circle color
+            }
+        });
+
+        // Initial setup on page load
+        stopButton.disabled = true;
+        outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
+        statusElement.innerHTML = `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
+        colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
+        updateColorCircle(appDetectedColor); // Initialize circle color
+    </script>
+</body>
+</html>
