@@ -26,6 +26,7 @@
             --color-disabled-text: #aaaaaa;
             --color-warning: #f7a01a;
 
+            /* Colors for visualization, matching our detection logic */
             --detected-red: #e74c3c;
             --detected-yellow: #f1c40f;
             --detected-green: #2ecc71;
@@ -39,7 +40,7 @@
             font-family: 'Inter', sans-serif;
             margin: 0;
             padding: 40px;
-            background-color: var(--color-light-bg); 
+            background-color: var(--color-light-bg);
             transition: background-color 0.5s ease;
             color: var(--color-text-dark);
             display: flex;
@@ -130,6 +131,7 @@
             box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.1);
             transition: background-color 0.2s ease;
         }
+
 
         .button-group {
             margin: 30px 0;
@@ -249,6 +251,7 @@
         let appCurrentLineWidth = 1;
         let appDetectedColor = 'none';
 
+        // Helper to update the color circle's background from CSS variables
         const updateColorCircle = (colorName) => {
             const colorVar = `--detected-${colorName.toLowerCase()}`;
             colorDisplayCircle.style.backgroundColor =
@@ -266,6 +269,7 @@
         const handleEngineEvent = (event) => {
             console.log("App received event from Engine:", event);
             
+            let commandDisplay = '';
             if (event.type === 'modeChange') {
                 appCurrentMode = event.data; 
                 outputElement.innerHTML = `Last command/event: <strong>Mode changed to ${appCurrentMode}</strong>`;
@@ -332,6 +336,7 @@
 
         startButton.addEventListener('click', async () => {
             if (!isEngineRunning) {
+                // Pass the video element to the engine so it can manage the camera
                 await fusionEngine.start(handleEngineEvent, webcamVideo); 
                 isEngineRunning = true;
                 startButton.textContent = 'Engine Running...';
@@ -369,6 +374,7 @@
             }
         });
 
+        // Initial setup on page load
         stopButton.disabled = true;
         outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
         statusElement.innerHTML =

@@ -1,4 +1,4 @@
-// packages/multiflow-toolkit/fusion-engine/index.js
+
 
 import { VoiceModule } from '../modules/voice-module.js';
 import { CameraModule } from '../modules/camera.js';
@@ -9,27 +9,36 @@ import { GestureModule } from '../modules/gesture.js';
  * The MultiflowFusionEngine is responsible for orchestrating
  * multimodal inputs (speech, gestures, color detection) and
  * providing a unified output to the main application.
- * It uses a late fusion strategy for speech and color (за paint),
- * и поедноставена логика за background.
+ * It uses a late fusion strategy for speech and color (for paint),
+ * and simplified logic for background.
  */
 export class MultiflowFusionEngine {
-    constructor() {
+    constructor(options = {}) {
         console.log("MultiflowFusionEngine constructor: Starting init...");
         
         this.voiceModule = new VoiceModule();
         this.cameraModule = new CameraModule();
         this.colorModule = new ColorDetectionModule();
-        this.gestureModule = new GestureModule();
+
+        // Instantiate GestureModule with smoothing options if provided
+        const gestureOptions = {
+            alpha: typeof options.gestureAlpha === 'number' ? options.gestureAlpha : 0.25,
+            minMove: typeof options.gestureMinMove === 'number' ? options.gestureMinMove : 0.005
+        };
+        this.gestureModule = new GestureModule(gestureOptions);
 
         this.currentMode = 'idle'; // 'idle', 'painting', 'background_set'
         this.currentLineWidth = 1;
 
-        // Last detected color + време за late fusion (за paint)
+        // Last detected color + time for late fusion (for paint)
         this.lastDetectedColorEvent = { color: 'none', timestamp: 0 };
-        this.FUSION_WINDOW_MS = 3000; // 3 секунди
+        this.FUSION_WINDOW_MS = typeof options.fusionWindowMs === 'number' ? options.fusionWindowMs : 3000; // ms
 
         this.currentPaintColor = null;
         this.lastHandPoint = null;
+
+        // Behavior: if true, auto-apply detected color when in painting mode
+        this.autoApplyColor = !!options.autoApplyColor;
 
         this.validSpeechCommands = ['paint', 'background', 'one', 'two', 'three', 'stop'];
         this.lineWidthMap = { 'one': 1, 'two': 2, 'three': 3 };
@@ -38,7 +47,23 @@ export class MultiflowFusionEngine {
         this.videoElement = null;
         this.colorDetectionInterval = null;
 
-        console.log("🚀 MultiflowFusionEngine initialized successfully.");
+        console.log("🚀 MultiflowFusionEngine initialized successfully. gestureOptions:", gestureOptions, "fusionWindowMs:", this.FUSION_WINDOW_MS);
+    }
+
+    /**
+     * Public: toggle autoApplyColor behavior at runtime.
+     * @param {boolean} enabled
+     */
+    setAutoApplyColor(enabled) {
+        this.autoApplyColor = !!enabled;
+        console.log("autoApplyColor set to", this.autoApplyColor);
+    }
+
+    /**
+     * Public: clear last detected color (useful after stop or reset).
+     */
+    clearLastColor() {
+        this.lastDetectedColorEvent = { color: 'none', timestamp: 0 };
     }
 
     /**
@@ -96,86 +121,111 @@ export class MultiflowFusionEngine {
      * Handles recognized speech commands.
      * @param {string} command
      */
-    handleSpeechCommand(command) {
-        const lower = command.toLowerCase().trim();
-        const currentTime = Date.now();
+ handleSpeechCommand(command) {
+    const lower = command.toLowerCase().trim();
+    const currentTime = Date.now();
 
-        console.log('🗣 Raw speech command:', JSON.stringify(lower));
+    console.log('🗣 Raw speech command:', JSON.stringify(lower));
 
-        const saidBackground = lower.includes('background');
-        const saidPaint      = lower.includes('paint');
-        const saidStop       = lower.includes('stop');
-        const saidOne        = lower.includes('one');
-        const saidTwo        = lower.includes('two');
-        const saidThree      = lower.includes('three');
+    const saidBackground = lower.includes('background');
+    const saidPaint      = lower.includes('paint');
+    const saidWait       = lower.includes('wait') || lower.includes('pause');
+    const saidStop       = lower.includes('stop');
+    const saidOne        = lower.includes('one');
+    const saidTwo        = lower.includes('two');
+    const saidThree      = lower.includes('three');
 
-        const isColorRecent = (currentTime - this.lastDetectedColorEvent.timestamp <= this.FUSION_WINDOW_MS);
-        const fusionColor   = this.lastDetectedColorEvent.color;
+    const isColorRecent = (currentTime - this.lastDetectedColorEvent.timestamp <= this.FUSION_WINDOW_MS);
+    const fusionColor   = this.lastDetectedColorEvent.color;
 
-        // === BACKGROUND (ПОЕДНОСТАВЕНО) ===
-        if (saidBackground) {
-            const bgColor = this.lastDetectedColorEvent.color;
-            console.log('BACKGROUND command detected, using color:', bgColor);
-
-            if (bgColor && bgColor !== 'none') {
-                this.emitCommand('setBackgroundColor', bgColor);
-                this.currentMode = 'background_set';
-                this.emitCommand('modeChange', this.currentMode);
-            } else {
-                console.log('No color available for background.');
-                this.emitCommand('warning', 'No color detected for background.');
-            }
-            return;
+    // === WAIT / PAUSE ===
+    if (saidWait) {
+        // Pause painting without losing currentPaintColor
+        if (this.currentMode === 'painting') {
+            this.currentMode = 'paused';
+            this.emitCommand('modeChange', this.currentMode);
+            this.emitCommand('warning', 'Painting paused.');
+        } else {
+            this.emitCommand('warning', 'Not currently painting.');
         }
-
-        // === PAINT (со late fusion) ===
-        if (saidPaint) {
-            this.currentMode = 'painting';
-
-            if (isColorRecent && fusionColor !== 'none' && fusionColor !== 'white') {
-                console.log(`✨ LATE FUSION: Entering painting mode with color ${fusionColor}.`);
-                this.currentPaintColor = fusionColor;
-                this.emitCommand('startPainting', { color: fusionColor });
-                this.lastDetectedColorEvent = { color: 'none', timestamp: 0 };
-            } else {
-                const reason = isColorRecent ? "color is white" : (fusionColor === 'none' ? "no color detected" : "color too old");
-                console.log(`💡 LATE FUSION: Entering painting mode. ${reason}, using default color.`);
-                this.currentPaintColor = 'black';
-                this.emitCommand('startPainting', { color: this.currentPaintColor });
-            }
-            this.emitCommand('modeChange', 'painting');
-            return;
-        }
-
-        // === Line width ===
-        if (saidOne) {
-            this.currentLineWidth = 1;
-            this.emitCommand('lineWidthChange', this.currentLineWidth);
-            return;
-        }
-        if (saidTwo) {
-            this.currentLineWidth = 2;
-            this.emitCommand('lineWidthChange', this.currentLineWidth);
-            return;
-        }
-        if (saidThree) {
-            this.currentLineWidth = 3;
-            this.emitCommand('lineWidthChange', this.currentLineWidth);
-            return;
-        }
-
-        // === STOP ===
-        if (saidStop) {
-            this.currentMode = 'idle';
-            this.currentPaintColor = null;
-            this.lastHandPoint = null;
-            this.emitCommand('modeChange', 'idle');
-            this.emitCommand('setBackgroundColor', 'none');
-            return;
-        }
-
-        console.log(`❌ Fusion Engine did not match speech command to any action: "${lower}"`);
+        return;
     }
+
+    // === BACKGROUND ===
+    if (saidBackground) {
+        const bgColor = this.lastDetectedColorEvent.color;
+        console.log('BACKGROUND command detected, using color:', bgColor);
+
+        if (bgColor && bgColor !== 'none') {
+            this.emitCommand('setBackgroundColor', bgColor);
+            this.currentMode = 'background_set';
+            this.emitCommand('modeChange', this.currentMode);
+        } else {
+            console.log('No color available for background.');
+            this.emitCommand('warning', 'No color detected for background.');
+        }
+        return;
+    }
+
+    // === PAINT (resume or start) ===
+    if (saidPaint) {
+        // If we were paused, resume painting with existing currentPaintColor
+        if (this.currentMode === 'paused') {
+            this.currentMode = 'painting';
+            this.emitCommand('modeChange', 'painting');
+            this.emitCommand('startPainting', { color: this.currentPaintColor || 'default' });
+            console.log('Resumed painting with color:', this.currentPaintColor);
+            return;
+        }
+
+        // Otherwise start painting (late fusion logic)
+        this.currentMode = 'painting';
+
+        if (isColorRecent && fusionColor !== 'none' && fusionColor !== 'white') {
+            console.log(`✨ LATE FUSION: Entering painting mode with color ${fusionColor}.`);
+            this.currentPaintColor = fusionColor;
+            this.emitCommand('startPainting', { color: fusionColor });
+            this.lastDetectedColorEvent = { color: 'none', timestamp: 0 };
+        } else {
+            const reason = isColorRecent ? "color is white" : (fusionColor === 'none' ? "no color detected" : "color too old");
+            console.log(`💡 LATE FUSION: Entering painting mode. ${reason}, using default color.`);
+            this.currentPaintColor = 'black';
+            this.emitCommand('startPainting', { color: this.currentPaintColor });
+        }
+        this.emitCommand('modeChange', 'painting');
+        return;
+    }
+
+    // === Line width ===
+    if (saidOne) {
+        this.currentLineWidth = 1;
+        this.emitCommand('lineWidthChange', this.currentLineWidth);
+        return;
+    }
+    if (saidTwo) {
+        this.currentLineWidth = 2;
+        this.emitCommand('lineWidthChange', this.currentLineWidth);
+        return;
+    }
+    if (saidThree) {
+        this.currentLineWidth = 3;
+        this.emitCommand('lineWidthChange', this.currentLineWidth);
+        return;
+    }
+
+    // === STOP ===
+    if (saidStop) {
+        this.currentMode = 'idle';
+        this.currentPaintColor = null;
+        this.lastHandPoint = null;
+        this.emitCommand('modeChange', 'idle');
+        this.emitCommand('setBackgroundColor', 'none');
+        return;
+    }
+
+    console.log(`❌ Fusion Engine did not match speech command to any action: "${lower}"`);
+}
+
 
     /**
      * Starts a loop to continuously detect colors from the video feed.
