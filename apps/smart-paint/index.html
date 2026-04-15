@@ -1,386 +1,211 @@
-<!-- apps/smart-paint/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multiflow Smart Paint - Speech, Camera, Color Test</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-
-    <!-- MediaPipe Hands + Camera utils (NECESSARY FOR gesture.js) -->
+    <title>Multiflow Smart Paint - Ultimate Stop Fix</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;800&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
 
     <style>
         :root {
-            --color-light-bg: #f8f8f8; 
-            --color-white: #ffffff;
-            --color-text-dark: #333333;
-            --color-text-medium: #666666;
-            --color-border: #e0e0e0;
-            --color-accent-green: #c8e6c9;
-            --color-accent-red: #f8d1c9;
-            --color-disabled: #f0f0f0;
-            --color-disabled-text: #aaaaaa;
-            --color-warning: #f7a01a;
-
-            /* Colors for visualization, matching our detection logic */
-            --detected-red: #e74c3c;
-            --detected-yellow: #f1c40f;
-            --detected-green: #2ecc71;
-            --detected-blue: #3498db;
-            --detected-black: #2c3e50;
-            --detected-white: #ecf0f1;
-            --detected-none: var(--color-text-medium);
+            --ui-bg: rgba(255, 255, 255, 0.98);
+            --bg-red: #e74c3c; --bg-yellow: #f1c40f; --bg-green: #2ecc71;
+            --bg-blue: #3498db; --bg-black: #1a1a1a; --bg-white: #ffffff;
         }
 
-        body {
-            font-family: 'Inter', sans-serif;
-            margin: 0;
-            padding: 40px;
-            background-color: var(--color-light-bg);
-            transition: background-color 0.5s ease;
-            color: var(--color-text-dark);
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
-            box-sizing: border-box;
-            line-height: 1.6;
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; font-family: 'Inter', sans-serif; }
+        #paintCanvas { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; background-color: white; z-index: 1; }
+
+        .detection-hub {
+            position: fixed; top: 0; left: 50%; transform: translateX(-50%);
+            z-index: 20; background: var(--ui-bg); padding: 8px 20px;
+            border-radius: 0 0 30px 30px; display: flex; align-items: center; gap: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1); border: 1px solid #eee;
         }
 
-        body.bg-red    { background-color: var(--detected-red); }
-        body.bg-yellow { background-color: var(--detected-yellow); }
-        body.bg-green  { background-color: var(--detected-green); }
-        body.bg-blue   { background-color: var(--detected-blue); }
-        body.bg-black  { background-color: var(--detected-black); }
-        body.bg-white  { background-color: var(--detected-white); }
-        body.bg-none   { background-color: var(--color-light-bg); }
+        #webcamVideo { width: 90px; height: 65px; border-radius: 10px; transform: scaleX(-1); border: 2px solid #3498db; }
+        #colorIndicator { width: 50px; height: 50px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
 
-        .container {
-            background-color: var(--color-white);
-            padding: 40px 50px;
-            border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
-            text-align: center;
-            max-width: 800px;
-            width: 100%;
-            border: 1px solid var(--color-border);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        .command-panel {
+            position: fixed; top: 90px; left: 50%; transform: translateX(-50%);
+            z-index: 10; background: var(--ui-bg); padding: 12px 30px;
+            border-radius: 50px; display: flex; gap: 20px; align-items: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
         }
 
-        h1 {
-            color: var(--color-text-dark);
-            margin-bottom: 25px;
-            font-size: 2.4em;
-            font-weight: 600;
-        }
-
-        p {
-            font-size: 1.1em;
-            margin-bottom: 15px;
-            color: var(--color-text-medium);
-        }
-
-        strong {
-            font-weight: 500;
-            color: var(--color-text-dark);
-        }
+        .ui-btn { padding: 10px 18px; border: none; border-radius: 25px; background: #f0f0f0; cursor: pointer; font-weight: 700; }
+        .ui-btn.active { background: #3498db; color: white; }
         
-        strong.warning-text {
-            color: var(--color-warning);
+        #modeDisplay { 
+            font-weight: 900; padding: 8px 20px; border-radius: 20px;
+            background: #e74c3c; color: white; min-width: 100px; text-align: center;
+            text-transform: uppercase; transition: 0.3s;
         }
-
-        .video-feed {
-            margin: 20px 0;
-            border: 2px solid var(--color-border);
-            border-radius: 8px;
-            overflow: hidden;
-            position: relative;
-            background-color: #eee;
-            width: 100%;
-            max-width: 640px;
-            aspect-ratio: 16 / 9;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .video-feed video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            transform: scaleX(-1);
-            background-color: #333;
-        }
-        
-        .color-display-circle {
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            border: 3px solid var(--color-white);
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 10;
-            box-shadow: 0 0 0 5px rgba(0, 0, 0, 0.1);
-            transition: background-color 0.2s ease;
-        }
-
-
-        .button-group {
-            margin: 30px 0;
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            width: 100%;
-        }
-
-        button {
-            padding: 12px 30px;
-            font-size: 1.1em;
-            font-weight: 500;
-            border: 1px solid var(--color-border);
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background-color 0.3s ease, border-color 0.3s ease, transform 0.2s ease, box-shadow 0.3s ease;
-            color: var(--color-text-dark);
-            background-color: var(--color-white);
-            min-width: 150px;
-        }
-
-        button#startButton {
-            border-color: var(--color-accent-green);
-        }
-
-        button#startButton:hover:not(:disabled) {
-            background-color: var(--color-accent-green);
-            color: var(--color-white);
-            border-color: var(--color-accent-green);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-        }
-
-        button#stopButton {
-            border-color: var(--color-accent-red);
-        }
-
-        button#stopButton:hover:not(:disabled) {
-            background-color: var(--color-accent-red);
-            color: var(--color-white);
-            border-color: var(--color-accent-red);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.05);
-        }
-
-        button:disabled {
-            background-color: var(--color-disabled);
-            border-color: var(--color-border);
-            color: var(--color-disabled-text);
-            cursor: not-allowed;
-            box-shadow: none;
-            transform: none;
-        }
-
-        #output, #status, #colorStatus {
-            margin-top: 15px;
-            font-size: 1.2em;
-            font-weight: 500;
-            min-height: 25px;
-            width: 100%;
-        }
-        #output {
-            color: var(--color-text-dark);
-        }
-        #status {
-            color: var(--color-text-medium);
-        }
-        #colorStatus {
-            color: var(--color-text-dark);
-            margin-bottom: 20px;
-        }
+        .is-painting { background: #2ecc71 !important; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Multiflow Smart Paint - Test</h1>
-        <p>Click <strong>"Start Engine"</strong> to activate speech and camera. Say commands like <strong>"paint"</strong>, <strong>"background"</strong>, <strong>"one"</strong>, <strong>"two"</strong>, <strong>"three"</strong>, or <strong>"stop"</strong>. Hold a colored object in the center of the camera to test color detection, then paint by moving your hand.</p>
-        
-        <div class="video-feed">
-            <video id="webcamVideo" autoplay playsinline></video>
-            <div id="colorDisplayCircle" class="color-display-circle"></div>
+
+    <canvas id="paintCanvas"></canvas>
+
+    <div class="detection-hub">
+        <video id="webcamVideo" autoplay playsinline></video>
+        <div id="colorIndicator"></div>
+        <div id="colorLabel" style="font-size: 13px; font-weight: 900; color: #333;">WAITING</div>
+    </div>
+
+    <div class="command-panel">
+        <div style="display: flex; gap: 8px; border-right: 1px solid #ddd; padding-right: 15px;">
+            <button class="ui-btn active" onclick="setBrush('magic', this)">✨ Magic</button>
+            <button class="ui-btn" onclick="setBrush('pencil', this)">✏️</button>
+            <button class="ui-btn" onclick="setBrush('eraser', this)">🧽</button>
         </div>
 
-        <!-- Canvas for painting driven by gesture -->
-        <canvas id="paintCanvas" width="640" height="360"
-                style="border:1px solid #e0e0e0; border-radius: 8px; margin-top: 20px;"></canvas>
+        <div id="modeDisplay">IDLE</div>
 
-        <div class="button-group">
-            <button id="startButton">Start Engine</button>
-            <button id="stopButton" disabled>Stop Engine</button>
+        <div style="display: flex; gap: 10px;">
+            <button id="startButton" class="ui-btn" style="background: #2ecc71; color: white;">START</button>
+            <button id="stopButton" class="ui-btn" style="background: #e74c3c; color: white;" disabled>RESET</button>
         </div>
-        
-        <p id="output">Last command/event: <strong>None</strong></p>
-        <p id="status">Current App Mode: <strong>Idle</strong> | Line Width: <strong>1</strong></p>
-        <p id="colorStatus">Detected Color: <strong>None</strong></p>
     </div>
 
     <script type="module">
         import { MultiflowFusionEngine } from '../../packages/multiflow-toolkit/fusion-engine/index.js'; 
 
         const fusionEngine = new MultiflowFusionEngine();
-        const webcamVideo = document.getElementById('webcamVideo');
-        const colorDisplayCircle = document.getElementById('colorDisplayCircle');
-        const outputElement = document.getElementById('output');
-        const statusElement = document.getElementById('status');
-        const colorStatusElement = document.getElementById('colorStatus');
-        const startButton = document.getElementById('startButton');
-        const stopButton = document.getElementById('stopButton');
+        const canvas = document.getElementById('paintCanvas');
+        const ctx = canvas.getContext('2d');
+        const video = document.getElementById('webcamVideo');
+        const colorIndicator = document.getElementById('colorIndicator');
+        const modeDisplay = document.getElementById('modeDisplay');
 
-        const paintCanvas = document.getElementById('paintCanvas');
-        const paintCtx = paintCanvas.getContext('2d');
-        let lastDrawPoint = null;
+        let lastPoint = null;
+        let currentBrush = 'magic';
+        let isPaintingActive = false;
+        let selectedColor = '#000000';
+        let strokeHistory = []; 
 
-        let isEngineRunning = false;
-        let appCurrentMode = 'idle';
-        let appCurrentLineWidth = 1;
-        let appDetectedColor = 'none';
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+        resize();
 
-        // Helper to update the color circle's background from CSS variables
-        const updateColorCircle = (colorName) => {
-            const colorVar = `--detected-${colorName.toLowerCase()}`;
-            colorDisplayCircle.style.backgroundColor =
-                getComputedStyle(document.documentElement).getPropertyValue(colorVar) || colorName;
+        window.setBrush = (type, btn) => {
+            currentBrush = type;
+            document.querySelectorAll('.ui-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
         };
 
-        const removeBgClasses = () => {
-            document.body.classList.forEach(className => {
-                if (className.startsWith('bg-')) {
-                    document.body.classList.remove(className);
+        function checkAndDrawSun(points) {
+            if (points.length < 15) return;
+            const xs = points.map(p => p.x);
+            const ys = points.map(p => p.y);
+            const minX = Math.min(...xs), maxX = Math.max(...xs);
+            const minY = Math.min(...ys), maxY = Math.max(...ys);
+            const w = maxX - minX, h = maxY - minY;
+            const dist = Math.hypot(points[0].x - points[points.length-1].x, points[0].y - points[points.length-1].y);
+
+            // Ако е нацртан круг (почеток блиску до крај и слични димензии)
+            if (dist < 120 && Math.abs(w - h) < 100 && w > 40) {
+                const cx = minX + w/2, cy = minY + h/2;
+                const r = w/3;
+                ctx.globalCompositeOperation = 'source-over';
+                ctx.shadowBlur = 0;
+                ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2);
+                ctx.fillStyle = "#FFD700"; ctx.fill();
+                ctx.strokeStyle = "#FFA500"; ctx.lineWidth = 4; ctx.stroke();
+                for(let i=0; i<8; i++) {
+                    let a = i * Math.PI/4;
+                    ctx.beginPath(); ctx.moveTo(cx+Math.cos(a)*r, cy+Math.sin(a)*r);
+                    ctx.lineTo(cx+Math.cos(a)*(r+20), cy+Math.sin(a)*(r+20));
+                    ctx.stroke();
                 }
-            });
-        };
+            }
+        }
 
         const handleEngineEvent = (event) => {
-            console.log("App received event from Engine:", event);
-            
-            let commandDisplay = '';
-            if (event.type === 'modeChange') {
-                appCurrentMode = event.data; 
-                outputElement.innerHTML = `Last command/event: <strong>Mode changed to ${appCurrentMode}</strong>`;
+            const type = event.type;
+            const data = event.data ? String(event.data).toLowerCase() : '';
 
-            } else if (event.type === 'lineWidthChange') {
-                appCurrentLineWidth = event.data;
-                outputElement.innerHTML = `Last command/event: <strong>Line width set to ${appCurrentLineWidth}</strong>`;
-
-            } else if (event.type === 'colorDetected') {
-                appDetectedColor = event.data;
-                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
-                updateColorCircle(appDetectedColor);
-
-            } else if (event.type === 'setBackgroundColor') {
-                const colorToSet = event.data;
-                removeBgClasses();
-                if (colorToSet && colorToSet !== 'none') {
-                    document.body.classList.add(`bg-${colorToSet}`);
-                    outputElement.innerHTML = `Last command/event: <strong>Background set to ${colorToSet}</strong>`;
-                } else {
-                    document.body.classList.add('bg-none');
-                    outputElement.innerHTML = `Last command/event: <strong>Background reset to default</strong>`;
-                }
-
-            } else if (event.type === 'startPainting') {
-                const paintColor = event.data.color || 'default';
-                outputElement.innerHTML =
-                    `Last command/event: <strong>Starting painting mode (color: ${paintColor})</strong>`;
-                lastDrawPoint = null; // new stroke on each startPainting
-
-            } else if (event.type === 'drawPoint') {
-                const { x, y, color, lineWidth } = event.data;
-                const px = x * paintCanvas.width;
-                const py = y * paintCanvas.height;
-
-                paintCtx.strokeStyle = color || '#000000';
-                paintCtx.lineWidth = lineWidth || 2;
-                paintCtx.lineCap = 'round';
-
-                if (!lastDrawPoint) {
-                    paintCtx.beginPath();
-                    paintCtx.moveTo(px, py);
-                } else {
-                    paintCtx.beginPath();
-                    paintCtx.moveTo(lastDrawPoint.x, lastDrawPoint.y);
-                    paintCtx.lineTo(px, py);
-                    paintCtx.stroke();
-                }
-
-                lastDrawPoint = { x: px, y: py };
-
-            } else if (event.type === 'warning') {
-                outputElement.innerHTML =
-                    `Last command/event: <strong class="warning-text">${event.data}</strong>`;
-
-            } else if (event.type === 'error') {
-                outputElement.innerHTML =
-                    `Last command/event: <strong class="warning-text">ERROR: ${event.data}</strong>`;
+            // 1. СТОП КОМАНДА (НАЈВИСОК ПРИОРИТЕТ)
+            if (data.includes('stop')) {
+                if (isPaintingActive) checkAndDrawSun(strokeHistory); 
+                isPaintingActive = false;
+                lastPoint = null;
+                strokeHistory = [];
+                modeDisplay.innerText = "IDLE";
+                modeDisplay.classList.remove('is-painting');
+                return; // Веднаш излези
             }
-           
-            statusElement.innerHTML =
-                `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`; 
+
+            // 2. БОЈА
+            if (type === 'colorDetected') {
+                selectedColor = getComputedStyle(document.documentElement).getPropertyValue(`--bg-${data}`) || '#000000';
+                colorIndicator.style.backgroundColor = selectedColor;
+                document.getElementById('colorLabel').innerText = data.toUpperCase();
+            }
+
+            // 3. ПЕИНТ И БЕКГРАУНД
+            if (data.includes('paint') || type === 'startPainting') {
+                isPaintingActive = true;
+                lastPoint = null;
+                strokeHistory = [];
+                modeDisplay.innerText = "PAINTING";
+                modeDisplay.classList.add('is-painting');
+            }
+
+            if (data.includes('background')) {
+                const colors = ['red', 'yellow', 'green', 'blue', 'black', 'white'];
+                const found = colors.find(c => data.includes(c));
+                if (found) canvas.style.backgroundColor = `var(--bg-${found})`;
+            }
+
+            // 4. ЦРТАЊЕ (ВЕНТИЛ)
+            if (type === 'drawPoint' && isPaintingActive) {
+                const { x, y } = event.data;
+                const px = x * canvas.width;
+                const py = y * canvas.height;
+                strokeHistory.push({x: px, y: py});
+
+                ctx.beginPath();
+                if (currentBrush === 'eraser') {
+                    ctx.globalCompositeOperation = 'destination-out';
+                    ctx.lineWidth = 60;
+                } else {
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = selectedColor;
+                    if (currentBrush === 'magic') {
+                        ctx.shadowBlur = 15; ctx.shadowColor = selectedColor;
+                        ctx.lineWidth = 8 + Math.random() * 5;
+                    } else {
+                        ctx.shadowBlur = 0; ctx.lineWidth = 6;
+                    }
+                }
+
+                ctx.lineCap = 'round';
+                if (lastPoint) {
+                    ctx.moveTo(lastPoint.x, lastPoint.y);
+                    ctx.lineTo(px, py);
+                    ctx.stroke();
+                }
+                lastPoint = { x: px, y: py };
+            }
         };
 
-        startButton.addEventListener('click', async () => {
-            if (!isEngineRunning) {
-                // Pass the video element to the engine so it can manage the camera
-                await fusionEngine.start(handleEngineEvent, webcamVideo); 
-                isEngineRunning = true;
-                startButton.textContent = 'Engine Running...';
-                startButton.disabled = true;
-                stopButton.disabled = false;
+        document.getElementById('startButton').onclick = async () => {
+            await fusionEngine.start(handleEngineEvent, video);
+            document.getElementById('startButton').disabled = true;
+            document.getElementById('stopButton').disabled = false;
+        };
 
-                outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
-                statusElement.innerHTML =
-                    `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
-                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
-                updateColorCircle(appDetectedColor);
-            }
-        });
-
-        stopButton.addEventListener('click', () => {
-            if (isEngineRunning) {
-                fusionEngine.stop();
-                isEngineRunning = false;
-                startButton.textContent = 'Start Engine';
-                startButton.disabled = false;
-                stopButton.disabled = true;
-
-                outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
-                appCurrentMode = 'idle'; 
-                appCurrentLineWidth = 1; 
-                appDetectedColor = 'none';
-                removeBgClasses();
-                statusElement.innerHTML =
-                    `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
-                colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
-                updateColorCircle(appDetectedColor);
-
-                paintCtx.clearRect(0, 0, paintCanvas.width, paintCanvas.height);
-                lastDrawPoint = null;
-            }
-        });
-
-        // Initial setup on page load
-        stopButton.disabled = true;
-        outputElement.innerHTML = 'Last command/event: <strong>None</strong>';
-        statusElement.innerHTML =
-            `Current App Mode: <strong>${appCurrentMode}</strong> | Line Width: <strong>${appCurrentLineWidth}</strong>`;
-        colorStatusElement.innerHTML = `Detected Color: <strong>${appDetectedColor}</strong>`;
-        updateColorCircle(appDetectedColor);
+        document.getElementById('stopButton').onclick = () => {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            canvas.style.backgroundColor = '#ffffff';
+        };
     </script>
 </body>
 </html>
